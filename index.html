@@ -54,21 +54,37 @@
     return docs[lang];
   }
 
+  const MIN_PIXEL_WIDTH = 2480;    // A4 at 300 DPI: print-quality sharpness even before zooming
+  const MAX_CANVAS_AREA = 16e6;    // stay under mobile browsers' canvas size limit
+  const zoom = () => (window.visualViewport ? visualViewport.scale : 1);
+
+  // Pixel ratio needed to look sharp at the current screen density and pinch-zoom level
+  function targetRatio(vp) {
+    const wanted = Math.max((window.devicePixelRatio || 1) * zoom(), MIN_PIXEL_WIDTH / vp.width);
+    return Math.min(wanted, Math.sqrt(MAX_CANVAS_AREA / (vp.width * vp.height)));
+  }
+
+  async function draw(wrap, ratio) {
+    const { page, vp } = wrap._pdf;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.floor(vp.width * ratio);
+    canvas.height = Math.floor(vp.height * ratio);
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport: page.getViewport({ scale: vp.scale * ratio }) }).promise;
+    const old = wrap.querySelector("canvas");
+    old ? old.replaceWith(canvas) : wrap.prepend(canvas);
+    wrap._pdf.ratio = ratio;
+  }
+
   async function renderPage(page, width) {
     const scale = width / page.getViewport({ scale: 1 }).width;
     const vp = page.getViewport({ scale });
-    const dpr = window.devicePixelRatio || 1;
 
     const wrap = document.createElement("div");
     wrap.className = "page";
     wrap.style.width = vp.width + "px";
     wrap.style.height = vp.height + "px";
-
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.floor(vp.width * dpr);
-    canvas.height = Math.floor(vp.height * dpr);
-    wrap.appendChild(canvas);
-    await page.render({ canvasContext: canvas.getContext("2d"), viewport: page.getViewport({ scale: scale * dpr }) }).promise;
+    wrap._pdf = { page, vp };
+    await draw(wrap, targetRatio(vp));
 
     // Selectable text
     const text = document.createElement("div");
@@ -126,6 +142,18 @@
     resizeTimer = setTimeout(() => {
       if (container.clientWidth !== lastWidth) { lastWidth = container.clientWidth; render(current); }
     }, 250);
+  });
+
+  // Pinch-zoom: redraw sharper once the gesture settles
+  let zoomTimer;
+  if (window.visualViewport) visualViewport.addEventListener("resize", () => {
+    clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(() => {
+      for (const wrap of container.querySelectorAll(".page")) {
+        const ratio = targetRatio(wrap._pdf.vp);
+        if (ratio > wrap._pdf.ratio * 1.1) draw(wrap, ratio);
+      }
+    }, 300);
   });
 
   // #fr / #en in the URL wins; otherwise follow the visitor's browser language
