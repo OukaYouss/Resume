@@ -18,6 +18,11 @@
             font-family:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   .toggle button { border:0; background:transparent; color:#222; padding:8px 14px; font-size:14px; font-weight:700; cursor:pointer; }
   .toggle button[aria-pressed="true"] { background:#222; color:#fff; }
+  /* Not enough room beside the CV: give the buttons their own row above it */
+  @media (max-width: 1100px) {
+    .toggle { position:absolute; }
+    #pages { padding-top:58px; }
+  }
 </style>
 </head>
 <body>
